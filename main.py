@@ -97,7 +97,7 @@ if __name__ == "__main__":
   )
 
   response = asyncio.run(
-    runner.run(messages="蜡笔小新在扭腰跳舞", session_id="veadk-homework-sess2")
+    runner.run(messages="蜡笔小新在扭腰跳舞。在生成的多张图片中，人物肤色要保持一致。", session_id="veadk-homework-sess4")
   )
   print(response)
 
