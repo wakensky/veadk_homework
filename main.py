@@ -1,5 +1,6 @@
 import asyncio
 import time
+import random
 from typing import Optional
 
 from google.adk.tools import ToolContext
@@ -97,7 +98,8 @@ if __name__ == "__main__":
   )
 
   response = asyncio.run(
-    runner.run(messages="蜡笔小新在扭腰跳舞。在生成的多张图片中，人物肤色要保持一致。", session_id="veadk-homework-sess4")
+    runner.run(messages="蜡笔小新在扭腰跳舞, 转圈圈",
+               session_id=f"veadk-homework-sess-{random.randint(1, 1000000)}")
   )
   print(response)
 
