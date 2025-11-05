@@ -1,14 +1,14 @@
 import asyncio
-import json
+import functools
 import sys
 import logging
 import random
-import base64
-import io
+from typing import Any
+
 import uvicorn
 from mcp import types as mcp_types
 from mcp import server as mcp_server
-from google.adk import tools as adk_tools
+from google.adk.tools import ToolContext
 from veadk.tools.builtin_tools.web_search import web_search
 from veadk import Agent
 from veadk import Runner
@@ -29,16 +29,26 @@ def setup_logger() -> logging.Logger:
 logger = setup_logger()
 
 async def _web_search_for_statistics(
-    prompt: str
+    prompt: str,
+    *,
+    tool_context: ToolContext,
 ):
-  return await web_search(f'search statistics for {prompt}')
+  loop = asyncio.get_running_loop()
+  search_fn = functools.partial(
+    web_search,
+    f'search statistics for {prompt}',
+    tool_context,
+  )
+  return await loop.run_in_executor(None, search_fn)
 
 plotter = Agent(
     name="statistics_plotter",
     description="A tool for searching statistics for a given prompt.",
     instruction=(
       "Given a user prompt, call the `_web_search_for_statistics` tool to search statistics. "
-      "Then generate python code matplotlib to plot the statistics."
+      "Then generate python code matplotlib to plot the statistics. "
+      "The python code should be a valid python code and can be executed directly."
+      "The generated code should be wrapped between tags <python> and </python>."
     ),
     tools=[_web_search_for_statistics],
   )
@@ -51,36 +61,39 @@ async def list_tools() -> list[mcp_types.Tool]:
   return [
     mcp_types.Tool(
       name="draw",
-      description="A tool for querying and drawing data",
-      parameters=mcp_types.ToolParameter(
-        name="query",
-        description=("ask anything that could be answered by a plot depends on objective statistics."
-                     "for example: the price of apple stock in 2025."),
-        type=mcp_types.String,
-        required=True,
-      ),
-    ), ]
+      description="Query statistics and render a plot.",
+      inputSchema={
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "What to look up and plot (e.g. 'apple stock price 2025').",
+          },
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+      },
+    ),
+  ]
 
 @pyplot_mcp.call_tool()
-async def call_draw(name: str, arguments: dict[str, any] | None) -> str:
+async def call_draw(name: str, arguments: dict[str, Any] | None):
   if name != "draw":
-    return [
-        mcp_types.TextContent(
-            type="text",
-            text=f"Unknown tool '{name}'",
-        ),
-    ]
+    return [mcp_types.TextContent(type="text", text=f"Unknown tool '{name}'")]
+
+  if not arguments or "query" not in arguments:
+    return [mcp_types.TextContent(type="text", text="Missing 'query' argument.")]
 
   runner = Runner(
     agent=plotter,
     app_name="veadk-homework",
     user_id="veadk-homework-user",
   )
-  response = asyncio.run(
-    runner.run(messages=arguments["query"],
-               session_id=f"veadk-homework-sess-{random.randint(1, 1000000)}")
+  response = await runner.run(
+    messages=arguments["query"],
+    session_id=f"veadk-homework-sess-{random.randint(1, 1_000_000)}",
   )
-  return [mcp_types.TextContent(type="text", text=response.content)]
+  return [mcp_types.TextContent(type="text", text=response)]
 
 # Set up an HTTP session manager (stateless here keeps each HTTP call separate).
 session_manager = mcp_server.streamable_http_manager.StreamableHTTPSessionManager(
